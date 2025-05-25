@@ -1,0 +1,6 @@
+google-genai
+pyaudio
+python-dotenv
+websockets
+exceptiongroup
+taskgroup
