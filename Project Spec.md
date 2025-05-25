@@ -125,3 +125,21 @@
 * **Power Management:** Stable power for all components.
 * **Latency:** Cumulative latency from all processing steps.
 
+## Instructions for Co-Pilot:
+
+Always include docstrings for functions and methods.
+Docstrings should contain:
+- A brief, one-line description of what the function does.
+- A section detailing each argument (`Args:`), its name, and description. Only include Args if they are not None.
+- A section detailing the return value (`Returns:`), its type, and description. Only include Returns if they are not None.
+Follow the standard docstring format for the language being used (e.g., Python's reST or Google style, JSDoc for JavaScript).
+
+Always include type hints for function and method parameters when writing in Python.
+Always include type hints for function and method return values when writing in Python.
+Never include redundant comments denoting edits made such as "changed this" or "import x".
+
+Always use UK english, not USA english.
+
+Build code in a modular way from the start, with smaller already refactored files rather than monolithic files.
+
+You have all the google documentation for the Gemini API in ./Google Documentation. It is up to date, so always refer to it.
