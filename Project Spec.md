@@ -142,5 +142,3 @@ Never include redundant comments denoting edits made such as "changed this" or "
 Always use UK english, not USA english.
 
 Build code in a modular way from the start, with smaller already refactored files rather than monolithic files.
-
-You have all the google documentation for the Gemini API in ./Google Documentation. It is up to date, so always refer to it.
