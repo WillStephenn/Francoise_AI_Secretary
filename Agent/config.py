@@ -18,7 +18,7 @@ AUDIO_CHUNK_SIZE = 1024
 # How often to sample audio RMS and send data to the ESP32 for display feedback
 # during playback of Gemini's voice.
 # Value is in milliseconds.
-RMS_SAMPLING_INTERVAL_MS: int = 80
+RMS_SAMPLING_INTERVAL_MS: int = 100
 
 # --- Gemini Model & API Configurations ---
 GEMINI_MODEL_NAME = "gemini-2.5-flash-preview-native-audio-dialog"

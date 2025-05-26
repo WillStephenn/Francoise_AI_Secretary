@@ -135,4 +135,4 @@ cython_debug/
 #Project-specific ignores
 Google Documentation/
 .DS_Store
-
+notes.md
