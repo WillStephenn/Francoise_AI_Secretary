@@ -3,6 +3,9 @@ import pyaudio
 from typing import List, Optional
 from google.genai import types
 
+# Import the new context builder
+from Agent.context_builder import get_contextual_system_prompt
+
 # --- Path Configurations ---
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, ".."))
@@ -16,8 +19,7 @@ VISUALISER_EXE_NAME = "Visualiser.out" # Changed from "visualiser"
 AGENT_DIR_NAME = "Agent" # For consistency, though SCRIPT_DIR is often used for this
 GEMINI_CLIENT_SCRIPT_NAME = "Gemini Client.py"
 AUDIO_SAMPLES_DIR_NAME = "Audio Samples"
-DEFAULT_SAMPLE_AUDIO_FILENAME = "Introduction.wav"
-# DEFAULT_SAMPLE_AUDIO_FILENAME = "How to make bread.wav" # Alternative sample
+DEFAULT_SAMPLE_AUDIO_FILENAME = "How to make bread.wav"
 
 # --- Full Paths derived from PROJECT_ROOT ---
 VISUALISER_DIR = os.path.join(PROJECT_ROOT, VISUALISER_DIR_NAME)
@@ -41,11 +43,11 @@ AUDIO_CHUNK_SIZE = 1024
 # during playback of Gemini's voice.
 # Value is in milliseconds.
 RMS_SAMPLING_INTERVAL_MS: int = 100
-PITCH_SAMPLING_INTERVAL_MS: int = 100 # Adjusted to be same as RMS for potential combined processing
+PITCH_SAMPLING_INTERVAL_MS: int = 100
 
 # --- Feature Toggles ---
 ENABLE_RMS_PROCESSING: bool = True
-ENABLE_PITCH_PROCESSING: bool = True
+ENABLE_PITCH_PROCESSING: bool = False
 
 # --- Gemini Model & API Configurations ---
 GEMINI_MODEL_NAME = "gemini-2.5-flash-preview-native-audio-dialog"
@@ -61,21 +63,7 @@ GEMINI_TOOLS = [
     types.Tool(google_search=types.GoogleSearch()),
 ]
 
-def load_system_prompt() -> str: # Removed filename argument, uses SYSTEM_PROMPT_PATH
-    """
-    Loads the system prompt from the predefined path.
-    
-    Returns:
-        str: The content of the system prompt file or a default prompt if file not found.
-    """
-    try:
-        with open(SYSTEM_PROMPT_PATH, "r", encoding="utf-8") as f:
-            return f.read()
-    except FileNotFoundError:
-        print(f"Error: System prompt file not found at {SYSTEM_PROMPT_PATH}")
-        return "You are a helpful assistant."  # Default fallback
-
-SYSTEM_PROMPT = load_system_prompt()
+SYSTEM_PROMPT = get_contextual_system_prompt() # Use the new function
 
 
 GEMINI_LIVE_CONNECT_CONFIG = types.LiveConnectConfig(

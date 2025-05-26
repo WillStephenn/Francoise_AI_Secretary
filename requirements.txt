@@ -4,3 +4,4 @@ python-dotenv
 websockets
 exceptiongroup
 taskgroup
+requests

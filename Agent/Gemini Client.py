@@ -114,12 +114,14 @@ class GeminiClient:
                 if ENABLE_RMS_PROCESSING: # Added
                     rms_value = calculate_rms_from_bytes(data)
                 if ENABLE_PITCH_PROCESSING: # Added
-                    pitch_value = calculate_pitch_from_bytes(data, sample_rate=AUDIO_SEND_SAMPLE_RATE, audio_format=AUDIO_FORMAT)
+                    try:
+                        pitch_value = calculate_pitch_from_bytes(data, sample_rate=AUDIO_SEND_SAMPLE_RATE, audio_format=AUDIO_FORMAT)
+                    except Exception as e:
+                        print(f"Error calculating pitch in _listen_to_microphone: {e}")
+                        pitch_value = 0 # Default to 0 if calculation fails
                 
-                # Send data only if at least one is enabled
-                if ENABLE_RMS_PROCESSING or ENABLE_PITCH_PROCESSING: # Added
-                    message: bytes = f"{rms_value},{pitch_value}".encode('utf-8')
-                    self._udp_socket.sendto(message, self._visualiser_address)
+                message: bytes = f"{rms_value},{pitch_value}".encode('utf-8')
+                self._udp_socket.sendto(message, self._visualiser_address)
 
         except asyncio.CancelledError:
             print("Microphone listening task cancelled.")
@@ -150,7 +152,7 @@ class GeminiClient:
 
     async def _receive_from_gemini(self) -> None:
         """
-        Receives audio from Gemini and puts it into the audio output queue.
+        Receives audio and text from Gemini, puts audio into the output queue, and prints text.
         """
         if self._audio_output_queue is None or self._session is None:
             print("Error: Audio output queue or session not initialised for receiving.")
@@ -163,10 +165,16 @@ class GeminiClient:
                 async for response in turn:
                     if audio_data := response.data:
                         self._audio_output_queue.put_nowait(audio_data)
+                    if text_data := response.text:
+                        print(text_data, end="")  # Print received text
 
+                # If you interrupt the model, it sends a turn_complete.
+                # For interruptions to work, we need to stop playback.
+                # So empty out the audio queue because it may have loaded
+                # much more audio than has played yet.
                 while not self._audio_output_queue.empty():
                     self._audio_output_queue.get_nowait()
-                    self._audio_output_queue.task_done()
+                    self._audio_output_queue.task_done() # Ensure task_done is called for each get
 
         except asyncio.CancelledError:
             print("Receiving from Gemini cancelled.")
@@ -201,17 +209,15 @@ class GeminiClient:
 
                 if ENABLE_RMS_PROCESSING: # Added
                     rms_value = calculate_rms_from_bytes(audio_chunk_bytes)
-                if ENABLE_PITCH_PROCESSING: # Added
-                    pitch_value = calculate_pitch_from_bytes(
-                        audio_chunk_bytes,
-                        sample_rate=AUDIO_RECEIVE_SAMPLE_RATE, 
-                        audio_format=AUDIO_FORMAT
-                    )
+                if ENABLE_PITCH_PROCESSING: # Added to correctly calculate pitch for visualiser
+                    try:
+                        pitch_value = calculate_pitch_from_bytes(audio_chunk_bytes, sample_rate=AUDIO_RECEIVE_SAMPLE_RATE, audio_format=AUDIO_FORMAT)
+                    except Exception as e:
+                        print(f"Error calculating pitch in _play_received_audio: {e}")
+                        pitch_value = 0 # Default to 0 if calculation fails
                 
-                # Send data only if at least one is enabled
-                if ENABLE_RMS_PROCESSING or ENABLE_PITCH_PROCESSING: # Added
-                    message: bytes = f"{rms_value},{pitch_value}".encode('utf-8')
-                    self._udp_socket.sendto(message, self._visualiser_address)
+                message: bytes = f"{rms_value},{pitch_value}".encode('utf-8')
+                self._udp_socket.sendto(message, self._visualiser_address)
 
         except asyncio.CancelledError:
             print("Audio playback task cancelled.")
