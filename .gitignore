@@ -136,3 +136,6 @@ cython_debug/
 Google Documentation/
 .DS_Store
 notes.md
+
+# System Prompt for Françoise AI
+Agent/System Prompt.md

@@ -26,12 +26,14 @@ from Agent.config import (
     GEMINI_MODEL_NAME,
     GEMINI_API_VERSION,
     GEMINI_LIVE_CONNECT_CONFIG,
-    VISUALISER_UDP_HOST, # Added import
-    VISUALISER_UDP_PORT # Added import
+    VISUALISER_UDP_HOST,
+    VISUALISER_UDP_PORT,
+    ENABLE_RMS_PROCESSING,    # Added
+    ENABLE_PITCH_PROCESSING # Added
 )
-# Import the RMS calculation function
 from Agent.RMS_Sampler import calculate_rms_from_bytes
-import socket # Added socket import
+from Agent.Pitch_Sampler import calculate_pitch_from_bytes # Added
+import socket
 
 load_dotenv(ENV_FILE_PATH)
 
@@ -64,11 +66,9 @@ class GeminiClient:
             api_key=api_key,
         )
 
-        # UDP Socket for sending RMS data to the visualiser
         self._udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self._visualiser_address = (VISUALISER_UDP_HOST, VISUALISER_UDP_PORT)
 
-        # The LiveConnectConfig is now directly imported
         self.CONFIG = GEMINI_LIVE_CONNECT_CONFIG
 
         self._audio_input_queue: Optional[asyncio.Queue[Dict[str, Any]]] = None
@@ -80,12 +80,9 @@ class GeminiClient:
     async def _listen_to_microphone(self) -> None:
         """
         Captures audio from the microphone and puts it into the input queue.
-        
-        Continuously reads audio data from the default microphone device and
-        places it into the audio input queue for processing.
         """
         if self._audio_input_queue is None:
-            print("Error: Audio input queue is not initialized.")
+            print("Error: Audio input queue is not initialised.")
             return
 
         mic_info: Dict[str, Any] = self._pya.get_default_input_device_info()
@@ -111,10 +108,18 @@ class GeminiClient:
                 )
                 await self._audio_input_queue.put({"data": data, "mime_type": "audio/pcm"})
 
-                # Calculate RMS and send to visualiser
-                rms_value = calculate_rms_from_bytes(data)
-                message = str(rms_value).encode('utf-8')
-                self._udp_socket.sendto(message, self._visualiser_address)
+                rms_value: float = 0.0
+                pitch_value: int = 0
+
+                if ENABLE_RMS_PROCESSING: # Added
+                    rms_value = calculate_rms_from_bytes(data)
+                if ENABLE_PITCH_PROCESSING: # Added
+                    pitch_value = calculate_pitch_from_bytes(data, sample_rate=AUDIO_SEND_SAMPLE_RATE, audio_format=AUDIO_FORMAT)
+                
+                # Send data only if at least one is enabled
+                if ENABLE_RMS_PROCESSING or ENABLE_PITCH_PROCESSING: # Added
+                    message: bytes = f"{rms_value},{pitch_value}".encode('utf-8')
+                    self._udp_socket.sendto(message, self._visualiser_address)
 
         except asyncio.CancelledError:
             print("Microphone listening task cancelled.")
@@ -127,9 +132,6 @@ class GeminiClient:
     async def _send_audio_to_gemini(self) -> None:
         """
         Sends audio from the input queue to the Gemini API.
-        
-        Continuously takes audio chunks from the input queue and forwards
-        them to the Gemini API session for processing.
         """
         if self._audio_input_queue is None or self._session is None:
             print("Error: Audio input queue or session not initialised for sending.")
@@ -149,9 +151,6 @@ class GeminiClient:
     async def _receive_from_gemini(self) -> None:
         """
         Receives audio from Gemini and puts it into the audio output queue.
-        
-        Listens for responses from the Gemini API and routes the audio
-        data to the audio output queue.
         """
         if self._audio_output_queue is None or self._session is None:
             print("Error: Audio output queue or session not initialised for receiving.")
@@ -165,7 +164,6 @@ class GeminiClient:
                     if audio_data := response.data:
                         self._audio_output_queue.put_nowait(audio_data)
 
-                # Handle interruptions: clear audio queue
                 while not self._audio_output_queue.empty():
                     self._audio_output_queue.get_nowait()
                     self._audio_output_queue.task_done()
@@ -179,13 +177,9 @@ class GeminiClient:
     async def _play_received_audio(self) -> None:
         """
         Plays audio from the output queue using the speaker.
-        
-        Continuously retrieves audio chunks from the output queue and
-        plays them through the default audio output device.
-        Also calculates and prints RMS of the playing audio.
         """
         if self._audio_output_queue is None:
-            print("Error: Audio output queue is not initialized.")
+            print("Error: Audio output queue is not initialised.")
             return
 
         output_audio_stream: Optional[pyaudio.Stream] = await asyncio.to_thread(
@@ -202,10 +196,22 @@ class GeminiClient:
                 await asyncio.to_thread(output_audio_stream.write, audio_chunk_bytes)
                 self._audio_output_queue.task_done()
 
-                # Calculate RMS of played audio and send to visualiser
-                rms_value = calculate_rms_from_bytes(audio_chunk_bytes)
-                message = str(rms_value).encode('utf-8')
-                self._udp_socket.sendto(message, self._visualiser_address)
+                rms_value: float = 0.0
+                pitch_value: int = 0
+
+                if ENABLE_RMS_PROCESSING: # Added
+                    rms_value = calculate_rms_from_bytes(audio_chunk_bytes)
+                if ENABLE_PITCH_PROCESSING: # Added
+                    pitch_value = calculate_pitch_from_bytes(
+                        audio_chunk_bytes,
+                        sample_rate=AUDIO_RECEIVE_SAMPLE_RATE, 
+                        audio_format=AUDIO_FORMAT
+                    )
+                
+                # Send data only if at least one is enabled
+                if ENABLE_RMS_PROCESSING or ENABLE_PITCH_PROCESSING: # Added
+                    message: bytes = f"{rms_value},{pitch_value}".encode('utf-8')
+                    self._udp_socket.sendto(message, self._visualiser_address)
 
         except asyncio.CancelledError:
             print("Audio playback task cancelled.")
@@ -218,9 +224,6 @@ class GeminiClient:
     async def run_conversation(self) -> None:
         """
         Runs the main conversation loop, managing all asynchronous tasks.
-        
-        Initialises the necessary queues, connects to the Gemini API, and
-        coordinates the audio capture, sending, receiving, and playback tasks.
         """
         self._audio_input_queue = asyncio.Queue(maxsize=10)
         self._audio_output_queue = asyncio.Queue()
@@ -257,9 +260,6 @@ class GeminiClient:
 async def main() -> None:
     """
     Main function to run the Gemini client.
-    
-    Initialises and runs the GeminiClient, handling any interruptions
-    or exceptions that may occur during execution.
     """
     client: GeminiClient = GeminiClient()
     try:
@@ -272,8 +272,7 @@ async def main() -> None:
 
 if __name__ == "__main__":
     try:
-        # asyncio.run(main()) # This was causing the nested event loop error
-        asyncio.get_event_loop().run_until_complete(main()) # Use existing loop if available
+        asyncio.get_event_loop().run_until_complete(main())
     except KeyboardInterrupt:
         print("\nExiting main program...")
     except Exception as e:

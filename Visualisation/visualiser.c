@@ -16,6 +16,8 @@
 
 #define MAX_RMS_FOR_BAR 0.4f
 #define BAR_WIDTH 40
+#define PITCH_MIN_HZ 100.0f // Added
+#define PITCH_MAX_HZ 1000.0f // Added
 // BAR_CHAR: On some systems, you might need to use wide characters (wchar_t) 
 // and functions like wprintf/putwc for '█' to display correctly.
 // Ensure your terminal is configured for UTF-8.
@@ -30,21 +32,40 @@ void clear_terminal() {
 #endif
 }
 
-void render_audio(float rms_value) {
+void render_audio(float rms_value, int pitch_value) { // Modified
     clear_terminal();
     printf("---YOU ARE NOW CONNECTED TO FRANÇOISE---\n");
 
+    // RMS Bar
     float scaled_rms = fminf(fmaxf(rms_value, 0.0f), MAX_RMS_FOR_BAR) / MAX_RMS_FOR_BAR;
-    int bar_length = (int)(scaled_rms * BAR_WIDTH);
-
-    for (int i = 0; i < bar_length; i++) {
+    int rms_bar_length = (int)(scaled_rms * BAR_WIDTH);
+    printf("RMS  : ");
+    for (int i = 0; i < rms_bar_length; i++) {
         putchar(BAR_CHAR);
     }
-    for (int i = 0; i < (BAR_WIDTH - bar_length); i++) {
+    for (int i = 0; i < (BAR_WIDTH - rms_bar_length); i++) {
         putchar(' ');
     }
     printf("\n");
-    for (int i = 0; i < BAR_WIDTH; i++) {
+
+    // Pitch Bar
+    float scaled_pitch = 0.0f;
+    if (pitch_value > 0) { // Only scale if pitch is detected
+        scaled_pitch = fminf(fmaxf((float)pitch_value, PITCH_MIN_HZ), PITCH_MAX_HZ);
+        scaled_pitch = (scaled_pitch - PITCH_MIN_HZ) / (PITCH_MAX_HZ - PITCH_MIN_HZ);
+    }
+    int pitch_bar_length = (int)(scaled_pitch * BAR_WIDTH);
+    printf("Pitch: ");
+    for (int i = 0; i < pitch_bar_length; i++) {
+        putchar(BAR_CHAR);
+    }
+    for (int i = 0; i < (BAR_WIDTH - pitch_bar_length); i++) {
+        putchar(' ');
+    }
+    printf(" %d Hz\n", pitch_value > 0 ? pitch_value : 0);
+
+    // Footer
+    for (int i = 0; i < BAR_WIDTH + 7; i++) { // Adjusted width for labels
         putchar('-');
     }
     printf("\n");
@@ -97,8 +118,18 @@ int main() {
                          &len);
         if (n > 0) {
             buffer[n] = '\0';
-            float rms_value = atof(buffer);
-            render_audio(rms_value);
+            float rms_value = 0.0f;
+            int pitch_value = 0;
+            // Expecting data in format "rms,pitch"
+            char* token = strtok(buffer, ",");
+            if (token != NULL) {
+                rms_value = atof(token);
+                token = strtok(NULL, ",");
+                if (token != NULL) {
+                    pitch_value = atoi(token);
+                }
+            }
+            render_audio(rms_value, pitch_value); // Modified
         } else if (n < 0) {
             perror("recvfrom error");
             // Potentially break or handle error
@@ -117,8 +148,9 @@ int main() {
     // render_audio(0.0f);
     // Simulate receiving some data if not using sockets for testing:
     // float test_rms[] = {0.05f, 0.1f, 0.2f, 0.3f, 0.4f, 0.3f, 0.2f, 0.1f, 0.05f, 0.0f};
+    // int test_pitch[] = {0, 120, 150, 200, 250, 200, 150, 120, 0, 0};
     // for (int i=0; i<10; ++i) {
-    //     render_audio(test_rms[i]);
+    //     render_audio(test_rms[i], test_pitch[i]);
     //     #ifdef _WIN32
     //         Sleep(200); // milliseconds
     //     #else

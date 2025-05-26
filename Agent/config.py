@@ -41,6 +41,11 @@ AUDIO_CHUNK_SIZE = 1024
 # during playback of Gemini's voice.
 # Value is in milliseconds.
 RMS_SAMPLING_INTERVAL_MS: int = 100
+PITCH_SAMPLING_INTERVAL_MS: int = 100 # Adjusted to be same as RMS for potential combined processing
+
+# --- Feature Toggles ---
+ENABLE_RMS_PROCESSING: bool = True
+ENABLE_PITCH_PROCESSING: bool = True
 
 # --- Gemini Model & API Configurations ---
 GEMINI_MODEL_NAME = "gemini-2.5-flash-preview-native-audio-dialog"
@@ -52,6 +57,9 @@ GEMINI_MEDIA_RESOLUTION = "MEDIA_RESOLUTION_MEDIUM"
 GEMINI_VOICE_NAME = "Gacrux"
 GEMINI_CONTEXT_TRIGGER_TOKENS = 25600
 GEMINI_CONTEXT_SLIDING_WINDOW_TARGET_TOKENS = 12800
+GEMINI_TOOLS = [
+    types.Tool(google_search=types.GoogleSearch()),
+]
 
 def load_system_prompt() -> str: # Removed filename argument, uses SYSTEM_PROMPT_PATH
     """
@@ -69,12 +77,19 @@ def load_system_prompt() -> str: # Removed filename argument, uses SYSTEM_PROMPT
 
 SYSTEM_PROMPT = load_system_prompt()
 
+
 GEMINI_LIVE_CONNECT_CONFIG = types.LiveConnectConfig(
     response_modalities=GEMINI_RESPONSE_MODALITIES,
     speech_config=types.SpeechConfig(
         voice_config=types.VoiceConfig(
             prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=GEMINI_VOICE_NAME)
         )
+    ),
+    tools=GEMINI_TOOLS,
+    media_resolution=GEMINI_MEDIA_RESOLUTION,
+    context_window_compression=types.ContextWindowCompressionConfig(
+        trigger_tokens=GEMINI_CONTEXT_TRIGGER_TOKENS,
+        sliding_window=types.SlidingWindow(target_tokens=GEMINI_CONTEXT_SLIDING_WINDOW_TARGET_TOKENS),
     ),
     system_instruction=types.Content(
         parts=[types.Part.from_text(text=SYSTEM_PROMPT)],
