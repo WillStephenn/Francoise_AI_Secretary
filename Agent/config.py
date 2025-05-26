@@ -7,7 +7,26 @@ from google.genai import types
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, ".."))
 ENV_FILE_PATH = os.path.join(SCRIPT_DIR, '.env')
-SYSTEM_PROMPT_FILENAME = "System Prompt.md"
+SYSTEM_PROMPT_FILENAME = "System Prompt.md" # Relative to SCRIPT_DIR (Agent folder)
+SYSTEM_PROMPT_PATH = os.path.join(SCRIPT_DIR, SYSTEM_PROMPT_FILENAME)
+
+# --- Application Structure Paths (relative to PROJECT_ROOT) ---
+VISUALISER_DIR_NAME = "Visualisation"
+VISUALISER_EXE_NAME = "Visualiser.out" # Changed from "visualiser"
+AGENT_DIR_NAME = "Agent" # For consistency, though SCRIPT_DIR is often used for this
+GEMINI_CLIENT_SCRIPT_NAME = "Gemini Client.py"
+AUDIO_SAMPLES_DIR_NAME = "Audio Samples"
+DEFAULT_SAMPLE_AUDIO_FILENAME = "Introduction.wav"
+# DEFAULT_SAMPLE_AUDIO_FILENAME = "How to make bread.wav" # Alternative sample
+
+# --- Full Paths derived from PROJECT_ROOT ---
+VISUALISER_DIR = os.path.join(PROJECT_ROOT, VISUALISER_DIR_NAME)
+VISUALISER_EXE_PATH = os.path.join(VISUALISER_DIR, VISUALISER_EXE_NAME)
+AGENT_DIR = os.path.join(PROJECT_ROOT, AGENT_DIR_NAME)
+GEMINI_CLIENT_SCRIPT_PATH = os.path.join(AGENT_DIR, GEMINI_CLIENT_SCRIPT_NAME)
+AUDIO_SAMPLES_DIR = os.path.join(PROJECT_ROOT, AUDIO_SAMPLES_DIR_NAME)
+DEFAULT_SAMPLE_AUDIO_FILE = os.path.join(AUDIO_SAMPLES_DIR, DEFAULT_SAMPLE_AUDIO_FILENAME)
+
 
 # --- Audio Configurations ---
 AUDIO_FORMAT = pyaudio.paInt16
@@ -31,25 +50,21 @@ GEMINI_VOICE_NAME = "Gacrux"
 GEMINI_CONTEXT_TRIGGER_TOKENS = 25600
 GEMINI_CONTEXT_SLIDING_WINDOW_TARGET_TOKENS = 12800
 
-def load_system_prompt(filename: str) -> str:
+def load_system_prompt() -> str: # Removed filename argument, uses SYSTEM_PROMPT_PATH
     """
-    Loads the system prompt from the specified file.
+    Loads the system prompt from the predefined path.
     
-    Args:
-        filename: The name of the file containing the system prompt.
-        
     Returns:
         str: The content of the system prompt file or a default prompt if file not found.
     """
-    file_path = os.path.join(SCRIPT_DIR, filename)
     try:
-        with open(file_path, "r", encoding="utf-8") as f:
+        with open(SYSTEM_PROMPT_PATH, "r", encoding="utf-8") as f:
             return f.read()
     except FileNotFoundError:
-        print(f"Error: System prompt file not found at {file_path}")
+        print(f"Error: System prompt file not found at {SYSTEM_PROMPT_PATH}")
         return "You are a helpful assistant."  # Default fallback
 
-SYSTEM_PROMPT = load_system_prompt(SYSTEM_PROMPT_FILENAME)
+SYSTEM_PROMPT = load_system_prompt()
 
 GEMINI_LIVE_CONNECT_CONFIG = types.LiveConnectConfig(
     response_modalities=GEMINI_RESPONSE_MODALITIES,
