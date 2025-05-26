@@ -25,10 +25,13 @@ from Agent.config import (
     AUDIO_CHUNK_SIZE,
     GEMINI_MODEL_NAME,
     GEMINI_API_VERSION,
-    GEMINI_LIVE_CONNECT_CONFIG
+    GEMINI_LIVE_CONNECT_CONFIG,
+    VISUALISER_UDP_HOST, # Added import
+    VISUALISER_UDP_PORT # Added import
 )
 # Import the RMS calculation function
 from Agent.RMS_Sampler import calculate_rms_from_bytes
+import socket # Added socket import
 
 load_dotenv(ENV_FILE_PATH)
 
@@ -61,6 +64,10 @@ class GeminiClient:
             api_key=api_key,
         )
 
+        # UDP Socket for sending RMS data to the visualiser
+        self._udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self._visualiser_address = (VISUALISER_UDP_HOST, VISUALISER_UDP_PORT)
+
         # The LiveConnectConfig is now directly imported
         self.CONFIG = GEMINI_LIVE_CONNECT_CONFIG
 
@@ -78,7 +85,7 @@ class GeminiClient:
         places it into the audio input queue for processing.
         """
         if self._audio_input_queue is None:
-            print("Error: Audio input queue not initialised.")
+            print("Error: Audio input queue is not initialized.")
             return
 
         mic_info: Dict[str, Any] = self._pya.get_default_input_device_info()
@@ -99,12 +106,16 @@ class GeminiClient:
         print("Listening...")
         try:
             while True:
-                data: bytes = await asyncio.to_thread(
-                    self._input_audio_stream.read, AUDIO_CHUNK_SIZE, **kwargs
-                )
-                await self._audio_input_queue.put({"data": data, "mime_type": "audio/pcm"})
+                audio_chunk_bytes: bytes = await asyncio.to_thread(self._input_audio_stream.read, AUDIO_CHUNK_SIZE, exception_on_overflow=False)
+                await self._audio_input_queue.put({"audio_frame": audio_chunk_bytes})
+                
+                # Calculate RMS and send to visualiser
+                rms_value = calculate_rms_from_bytes(audio_chunk_bytes)
+                message = str(rms_value).encode('utf-8')
+                self._udp_socket.sendto(message, self._visualiser_address)
+
         except asyncio.CancelledError:
-            print("Microphone listening cancelled.")
+            print("Microphone listening task cancelled.")
         finally:
             if self._input_audio_stream:
                 self._input_audio_stream.stop_stream()
@@ -172,28 +183,30 @@ class GeminiClient:
         Also calculates and prints RMS of the playing audio.
         """
         if self._audio_output_queue is None:
-            print("Error: Audio output queue not initialised.")
+            print("Error: Audio output queue is not initialized.")
             return
 
-        output_audio_stream: Optional[pyaudio.Stream] = None
+        output_audio_stream: Optional[pyaudio.Stream] = await asyncio.to_thread(
+            self._pya.open,
+            format=AUDIO_FORMAT,
+            channels=AUDIO_CHANNELS,
+            rate=AUDIO_RECEIVE_SAMPLE_RATE,
+            output=True,
+        )
         try:
-            output_audio_stream = await asyncio.to_thread(
-                self._pya.open,
-                format=AUDIO_FORMAT,
-                channels=AUDIO_CHANNELS,
-                rate=AUDIO_RECEIVE_SAMPLE_RATE,
-                output=True,
-            )
             print("Audio playback started.")
             while True:
-                audio_chunk: bytes = await self._audio_output_queue.get()
-                # Calculate and print RMS before writing to stream
-                rms_value = calculate_rms_from_bytes(audio_chunk)
-                print(f"Live RMS: {rms_value:.4f}") 
-                await asyncio.to_thread(output_audio_stream.write, audio_chunk)
+                audio_chunk_bytes: bytes = await self._audio_output_queue.get()
+                await asyncio.to_thread(output_audio_stream.write, audio_chunk_bytes)
                 self._audio_output_queue.task_done()
+
+                # Calculate RMS of played audio and send to visualiser
+                rms_value = calculate_rms_from_bytes(audio_chunk_bytes)
+                message = str(rms_value).encode('utf-8')
+                self._udp_socket.sendto(message, self._visualiser_address)
+
         except asyncio.CancelledError:
-            print("Audio playback cancelled.")
+            print("Audio playback task cancelled.")
         finally:
             if output_audio_stream:
                 output_audio_stream.stop_stream()
@@ -250,16 +263,17 @@ async def main() -> None:
     try:
         await client.run_conversation()
     except KeyboardInterrupt:
-        print("\nConversation interrupted by user. Exiting...")
+        print("\nShutting down Gemini Client...")
     except Exception as e:
         print(f"An error occurred in main: {e}")
         traceback.print_exc()
 
 if __name__ == "__main__":
     try:
-        asyncio.run(main())
+        # asyncio.run(main()) # This was causing the nested event loop error
+        asyncio.get_event_loop().run_until_complete(main()) # Use existing loop if available
     except KeyboardInterrupt:
-        print("\nApplication terminated by user.")
+        print("\nExiting main program...")
     except Exception as e:
         print(f"Critical error in application startup: {e}")
         traceback.print_exc()

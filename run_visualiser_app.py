@@ -1,9 +1,9 @@
-import subprocess
 import os
 import sys
-import asyncio
-import socket
+import subprocess
 import time
+import socket
+import asyncio
 
 # --- Configuration ---
 # Set to "LIVE" to run Gemini Client, "FILE" to run with a sample audio file.
@@ -33,13 +33,40 @@ def start_c_visualiser():
     """Starts the C visualiser application."""
     if not os.path.exists(VISUALISER_EXE_PATH):
         print(f"Error: C Visualiser executable not found at {VISUALISER_EXE_PATH}")
-        print("Please compile visualiser.c first (e.g., gcc Visualisation/visualiser.c -o Visualisation/visualiser -lm)")
+        print("Please compile visualiser.c first (e.g., gcc Visualisation/visualiser.c -o Visualisation/Visualiser.out -lm)") # Corrected output name
         return None
+    
     print(f"Starting C Visualiser: {VISUALISER_EXE_PATH}")
     try:
-        visualiser_process = subprocess.Popen([VISUALISER_EXE_PATH])
-        print(f"C Visualiser started with PID: {visualiser_process.pid}")
-        time.sleep(1)  # Give it a moment to start up and bind the socket
+        visualiser_process = None
+        if sys.platform == "darwin": # macOS
+            visualiser_dir = os.path.dirname(VISUALISER_EXE_PATH)
+            
+            # Escape backslashes and double quotes in paths for AppleScript string literals
+            # This makes them safe to be embedded in the f-string constructing the AppleScript command.
+            as_literal_visualiser_dir = visualiser_dir.replace('\\\\', '\\\\\\\\').replace('"', '\\\\"')
+            as_literal_visualiser_exe_path = VISUALISER_EXE_PATH.replace('\\\\', '\\\\\\\\').replace('"', '\\\\"')
+
+            apple_script_command = (
+                f'tell application "Terminal"\n'
+                f'    activate\n'
+                f'    set dir_path to "{as_literal_visualiser_dir}"\n'
+                f'    set exe_path to "{as_literal_visualiser_exe_path}"\n'
+                f'    set shell_command to "cd " & quoted form of dir_path & " && " & quoted form of exe_path\n'
+                f'    do script shell_command\n'
+                f'end tell'
+            )
+            
+            visualiser_process = subprocess.Popen(['osascript', '-e', apple_script_command])
+            print(f"C Visualiser launched in a new Terminal window via AppleScript (osascript PID: {visualiser_process.pid if visualiser_process else 'N/A'}).")
+            # The PID here is for osascript, not the C visualiser directly.
+        else:
+            # Fallback for other OSes
+            print("Attempting to start C Visualiser in the current environment (not a new window for non-macOS).")
+            visualiser_process = subprocess.Popen([VISUALISER_EXE_PATH])
+            print(f"C Visualiser started with PID: {visualiser_process.pid if visualiser_process else 'N/A'}")
+
+        time.sleep(2)  # Give it a moment to start up (increased for new window)
         return visualiser_process
     except Exception as e:
         print(f"Failed to start C visualiser: {e}")
@@ -58,17 +85,17 @@ async def run_file_mode(visualiser_socket_sender):
         async for rms_value in stream_audio_and_calculate_rms(DEFAULT_SAMPLE_AUDIO_FILE, play_audio=True):
             message = str(rms_value).encode('utf-8')
             visualiser_socket_sender.sendto(message, (VISUALISER_UDP_HOST, VISUALISER_UDP_PORT))
-            # The C visualiser handles its own rendering rate.
-            # The sleep is handled within stream_audio_and_calculate_rms.
+            
     except Exception as e:
         print(f"Error during file mode: {e}")
     finally:
         print("File mode finished.")
         # Send a zero RMS to clear the bar
         try:
-            visualiser_socket_sender.sendto("0.0".encode('utf-8'), (VISUALISER_UDP_HOST, VISUALISER_UDP_PORT))
+            message = "0.0".encode('utf-8')
+            visualiser_socket_sender.sendto(message, (VISUALISER_UDP_HOST, VISUALISER_UDP_PORT))
         except Exception as e:
-            print(f"Error sending final zero RMS: {e}")
+            print(f"Error sending zero RMS: {e}")
 
 def run_live_mode():
     """Runs the live conversation with Gemini Client."""
@@ -102,43 +129,46 @@ async def main_async_runner():
         elif OPERATION_MODE == "LIVE":
             gemini_process_live = run_live_mode()
             if gemini_process_live:
-                # Keep the main script alive while gemini_process_live (subprocess) is running
-                while gemini_process_live.poll() is None:
-                    await asyncio.sleep(0.5) # Check periodically
-                print(f"Gemini Client process exited with code: {gemini_process_live.returncode}")
-            else:
-                print("Gemini client failed to start in LIVE mode.")
+                print("Live mode started. Waiting for Gemini Client to complete...")
+                # Asynchronously wait for the Gemini client process to complete
+                # This keeps the main script running and allows for graceful shutdown
+                await asyncio.to_thread(gemini_process_live.wait)
         else:
-            print(f"Unknown OPERATION_MODE: {OPERATION_MODE}")
+            print(f"Error: Unknown OPERATION_MODE: {OPERATION_MODE}")
 
     except KeyboardInterrupt:
-        print("\nApplication interrupted by user.")
+        print("\nKeyboard interrupt received. Shutting down...")
     except Exception as e:
-        print(f"An unexpected error occurred in main_async_runner: {e}")
+        print(f"An error occurred in main_async_runner: {e}")
     finally:
-        print("Shutting down...")
-        if gemini_process_live and gemini_process_live.poll() is None:
-            print("Terminating Gemini Client (if still running)...")
-            gemini_process_live.terminate()
-            try:
-                gemini_process_live.wait(timeout=5) # Wait for graceful termination
-            except subprocess.TimeoutExpired:
-                print("Gemini Client did not terminate gracefully, killing.")
-                gemini_process_live.kill()
-            print("Gemini Client terminated.")
+        print("Cleaning up resources...")
+        if visualiser_process:
+            if visualiser_process.poll() is None: # Check if process is still running
+                print("Terminating C Visualiser...")
+                visualiser_process.terminate()
+                try:
+                    visualiser_process.wait(timeout=5) # Wait for a few seconds
+                except subprocess.TimeoutExpired:
+                    print("C Visualiser did not terminate gracefully, killing.")
+                    visualiser_process.kill()
+            else:
+                print("C Visualiser already terminated.")
+
+        if gemini_process_live:
+            if gemini_process_live.poll() is None: # Check if process is still running
+                print("Terminating Gemini Client...")
+                gemini_process_live.terminate()
+                try:
+                    gemini_process_live.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    print("Gemini Client did not terminate gracefully, killing.")
+                    gemini_process_live.kill()
+            else:
+                print("Gemini Client already terminated.")
         
-        if visualiser_process and visualiser_process.poll() is None:
-            print("Terminating C Visualiser...")
-            visualiser_process.terminate()
-            try:
-                visualiser_process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                print("C Visualiser did not terminate gracefully, killing.")
-                visualiser_process.kill()
-            print("C Visualiser terminated.")
-        
-        udp_sender_socket.close()
-        print("Cleanup complete. Exiting.")
+        if udp_sender_socket:
+            udp_sender_socket.close()
+        print("Cleanup complete.")
 
 if __name__ == "__main__":
     asyncio.run(main_async_runner())
