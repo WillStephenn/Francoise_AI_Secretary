@@ -7,7 +7,7 @@ import asyncio
 
 # --- Configuration ---
 # Set to "LIVE" to run Gemini Client, "FILE" to run with a sample audio file.
-OPERATION_MODE = "FILE"  # Options: "LIVE" or "FILE"
+OPERATION_MODE = "LIVE"  # Options: "LIVE" or "FILE"
 # OPERATION_MODE = "LIVE" 
 
 # Ensure Agent directory is in path for imports
