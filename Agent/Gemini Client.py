@@ -106,11 +106,13 @@ class GeminiClient:
         print("Listening...")
         try:
             while True:
-                audio_chunk_bytes: bytes = await asyncio.to_thread(self._input_audio_stream.read, AUDIO_CHUNK_SIZE, exception_on_overflow=False)
-                await self._audio_input_queue.put({"audio_frame": audio_chunk_bytes})
-                
+                data: bytes = await asyncio.to_thread(
+                    self._input_audio_stream.read, AUDIO_CHUNK_SIZE, **kwargs
+                )
+                await self._audio_input_queue.put({"data": data, "mime_type": "audio/pcm"})
+
                 # Calculate RMS and send to visualiser
-                rms_value = calculate_rms_from_bytes(audio_chunk_bytes)
+                rms_value = calculate_rms_from_bytes(data)
                 message = str(rms_value).encode('utf-8')
                 self._udp_socket.sendto(message, self._visualiser_address)
 
