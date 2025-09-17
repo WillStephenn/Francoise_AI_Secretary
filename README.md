@@ -26,7 +26,7 @@ The primary focus is on the software agent and the technical challenges of creat
 
 1.  **Clone the repository:**
     ```bash
-    git clone [https://github.com/willstephenn/francoise_ai_secretary.git](https://github.com/willstephenn/francoise_ai_secretary.git)
+    git clone https://github.com/WillStephenn/Francoise_AI_Secretary
     cd francoise_ai_secretary
     ```
 
