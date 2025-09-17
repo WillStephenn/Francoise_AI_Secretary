@@ -48,6 +48,8 @@ To start a conversation, execute the `Gemini Client.py` script from the project'
 
 ```bash
 python Agent/Gemini\ Client.py
+```
+
 The application will connect to your default microphone. Start speaking to begin the interaction.
 
 Future Work
